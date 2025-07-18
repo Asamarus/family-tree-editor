@@ -1,8 +1,8 @@
 # Family Tree Editor
 
-[![App Demo](app-demo.png)](https://github.com/Asamarus/family-tree-editor)
+[![App Demo](app-demo.png)](https://asamarus.github.io/family-tree-editor/)
 
-**[Live Demo](https://github.com/Asamarus/family-tree-editor)**
+**[Live Demo](https://asamarus.github.io/family-tree-editor/)**
 
 ---
 
