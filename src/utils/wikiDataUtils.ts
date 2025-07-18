@@ -223,11 +223,16 @@ export const loadPersonFamily = async (personId: string): Promise<WikiDataFamily
   }
 
   data.results?.bindings?.forEach((binding: SparqlBinding) => {
-    const label = binding.personLabel?.value ?? ''
-    if (!label || label.startsWith('http')) return
+    // Check all relevant labels for http
+    const checkLabel = (lbl?: string) => !!lbl && lbl.trim().startsWith('http')
+
+    if (checkLabel(binding.personLabel?.value)) {
+      return
+    }
+
     const person: WikiDataPerson = {
       id: binding.person?.value.split('/').pop() ?? '',
-      label,
+      label: binding.personLabel?.value ?? '',
       description: binding.personDescription?.value ?? '',
       image: getWikiThumbnail(binding.image?.value),
       birthDate: getValidDate(binding.birthDate?.value),
@@ -249,7 +254,7 @@ export const loadPersonFamily = async (personId: string): Promise<WikiDataFamily
         break
       case 'child': {
         let otherParent: WikiDataPerson | undefined
-        if (binding.otherParent?.value) {
+        if (binding.otherParent?.value && !checkLabel(binding.otherParentLabel?.value)) {
           const otherParentId = binding.otherParent.value.split('/').pop() ?? ''
           otherParent = {
             id: otherParentId,
@@ -270,7 +275,7 @@ export const loadPersonFamily = async (personId: string): Promise<WikiDataFamily
         // For siblings, get father/mother if available
         let father: WikiDataPerson | undefined
         let mother: WikiDataPerson | undefined
-        if (binding.siblingFatherLabel?.value) {
+        if (binding.siblingFatherLabel?.value && !checkLabel(binding.siblingFatherLabel?.value)) {
           father = {
             id: binding.siblingFather?.value?.split('/').pop() ?? '',
             label: binding.siblingFatherLabel?.value,
@@ -281,7 +286,7 @@ export const loadPersonFamily = async (personId: string): Promise<WikiDataFamily
             gender: mapWikiGender(binding.siblingFatherGender?.value),
           }
         }
-        if (binding.siblingMotherLabel?.value) {
+        if (binding.siblingMotherLabel?.value && !checkLabel(binding.siblingMotherLabel?.value)) {
           mother = {
             id: binding.siblingMother?.value?.split('/').pop() ?? '',
             label: binding.siblingMotherLabel?.value,
@@ -299,6 +304,7 @@ export const loadPersonFamily = async (personId: string): Promise<WikiDataFamily
       }
     }
   })
+
   return family
 }
 
