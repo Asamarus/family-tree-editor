@@ -1,0 +1,10 @@
+.avatar-preview {
+  padding: var(--mantine-spacing-sm);
+  background: var(--mantine-color-gray-0);
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  @mixin dark {
+    background: var(--mantine-color-dark-6);
+    border-color: var(--mantine-color-dark-4);
+  }
+}

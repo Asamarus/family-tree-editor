@@ -1,0 +1,68 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+}
+
+body,
+html {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100%;
+  position: relative;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+
+  @mixin light {
+    background-color: #e8e8e8;
+    color: #000;
+  }
+
+  @mixin dark {
+    background-color: #1a1b1e;
+    color: #c1c2c5;
+  }
+}
+
+#root {
+  height: 100%;
+}
+
+.no-shrink {
+  flex-shrink: 0;
+}
+
+.app-container {
+  width: 100%;
+  height: 100vh;
+}
+
+.familytree-wrapper {
+  padding-top: 60px;
+  padding-right: 350px;
+  width: 100%;
+  height: 100%;
+}
+
+@media (max-width: 768px) {
+  .familytree-wrapper {
+    padding-top: 60px;
+    padding-right: 0;
+    width: 100vw;
+    height: 100dvh;
+  }
+}
+
+.break-word {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.flex-grow {
+  flex: 1;
+}

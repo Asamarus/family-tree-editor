@@ -1,0 +1,12 @@
+.edge {
+  stroke-width: 2 !important;
+}
+
+.highlighted {
+  stroke: #ff6b35;
+  stroke-width: 4 !important;
+}
+
+.faded {
+  opacity: 0.05;
+}

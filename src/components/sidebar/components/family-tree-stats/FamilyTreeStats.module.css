@@ -1,0 +1,17 @@
+.stat-card {
+  background: var(--mantine-color-gray-0);
+  border: 1px solid var(--mantine-color-default-border);
+
+  @mixin dark {
+    background: var(--mantine-color-dark-6);
+    border-color: var(--mantine-color-dark-4);
+  }
+}
+
+.stat-card:hover {
+  background: var(--mantine-color-gray-1);
+
+  @mixin dark {
+    background: var(--mantine-color-dark-5);
+  }
+}
