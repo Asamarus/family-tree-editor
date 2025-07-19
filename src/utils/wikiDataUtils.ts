@@ -73,8 +73,32 @@ function mapWikiGender(genderValue?: string): 'M' | 'F' | 'U' {
 // Utility to validate and format date strings
 function getValidDate(val?: string): string | undefined {
   if (!val) return undefined
-  const datePart = val.split('T')[0]
-  return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : undefined
+  let datePart = val.split('T')[0]
+  // Handle negative years (BCE)
+  let isBCE = false
+  if (datePart.startsWith('-')) {
+    isBCE = true
+    // Remove leading minus and leading zeros in year
+    const bceRegex = /-(\d+)-(\d{2})-(\d{2})/
+    const match = bceRegex.exec(datePart)
+    if (match) {
+      // Remove leading zeros from year
+      const year = String(Number(match[1]))
+      datePart = `${year}-${match[2]}-${match[3]}`
+    }
+  } else {
+    // Remove leading zeros from year if any
+    const dateRegex = /(\d+)-(\d{2})-(\d{2})/
+    const match = dateRegex.exec(datePart)
+    if (match) {
+      const year = String(Number(match[1]))
+      datePart = `${year}-${match[2]}-${match[3]}`
+    }
+  }
+  if (/^\d{1,4}-\d{2}-\d{2}$/.test(datePart)) {
+    return isBCE ? `${datePart} BCE` : datePart
+  }
+  return undefined
 }
 
 // Helper to get a 120px wide Wikimedia Commons image
