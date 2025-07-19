@@ -164,12 +164,128 @@ export const searchWikiData = async (searchQuery: string): Promise<WikiDataPerso
   return persons
 }
 
+interface FamilyRelations {
+  fathers: string[]
+  mothers: string[]
+  spouses: string[]
+  children: Array<{ childId: string; otherParentId?: string }>
+  siblings: Array<{ siblingId: string; fatherId?: string; motherId?: string }>
+}
+
+interface RelationBinding {
+  person?: { value: string }
+  relation?: { value: string }
+  otherParent?: { value: string }
+  siblingFather?: { value: string }
+  siblingMother?: { value: string }
+}
+
+interface PersonDataBinding {
+  item?: { value: string }
+  itemLabel?: { value: string }
+  itemDescription?: { value: string }
+  image?: { value: string }
+  birthDate?: { value: string }
+  deathDate?: { value: string }
+  gender?: { value: string }
+}
+
+interface SparqlResponse {
+  results?: {
+    bindings?: RelationBinding[]
+  }
+}
+
+function addRelation(
+  relations: FamilyRelations,
+  allPersonIds: Set<string>,
+  binding: RelationBinding,
+): void {
+  const personId = binding.person?.value.split('/').pop() ?? ''
+  const relation = binding.relation?.value
+
+  if (!personId) return
+  allPersonIds.add(personId)
+
+  switch (relation) {
+    case 'father':
+      if (!relations.fathers.includes(personId)) {
+        relations.fathers.push(personId)
+      }
+      break
+    case 'mother':
+      if (!relations.mothers.includes(personId)) {
+        relations.mothers.push(personId)
+      }
+      break
+    case 'spouse':
+      if (!relations.spouses.includes(personId)) {
+        relations.spouses.push(personId)
+      }
+      break
+    case 'child':
+      addChildRelation(relations, allPersonIds, binding, personId)
+      break
+    case 'sibling':
+      addSiblingRelation(relations, allPersonIds, binding, personId)
+      break
+  }
+}
+
+function addChildRelation(
+  relations: FamilyRelations,
+  allPersonIds: Set<string>,
+  binding: RelationBinding,
+  personId: string,
+): void {
+  const otherParentId = binding.otherParent?.value?.split('/').pop()
+  if (otherParentId) {
+    allPersonIds.add(otherParentId)
+  }
+  if (!relations.children.some((c) => c.childId === personId)) {
+    relations.children.push({ childId: personId, otherParentId })
+  }
+}
+
+function addSiblingRelation(
+  relations: FamilyRelations,
+  allPersonIds: Set<string>,
+  binding: RelationBinding,
+  personId: string,
+): void {
+  const fatherId = binding.siblingFather?.value?.split('/').pop()
+  const motherId = binding.siblingMother?.value?.split('/').pop()
+  if (fatherId) allPersonIds.add(fatherId)
+  if (motherId) allPersonIds.add(motherId)
+  if (!relations.siblings.some((s) => s.siblingId === personId)) {
+    relations.siblings.push({ siblingId: personId, fatherId, motherId })
+  }
+}
+
+function processRelationBindings(relationsData: SparqlResponse): {
+  relations: FamilyRelations
+  allPersonIds: Set<string>
+} {
+  const relations: FamilyRelations = {
+    fathers: [],
+    mothers: [],
+    spouses: [],
+    children: [],
+    siblings: [],
+  }
+  const allPersonIds = new Set<string>()
+
+  relationsData.results?.bindings?.forEach((binding: RelationBinding) => {
+    addRelation(relations, allPersonIds, binding)
+  })
+
+  return { relations, allPersonIds }
+}
+
 export const loadPersonFamily = async (personId: string): Promise<WikiDataFamily> => {
-  const sparqlQuery = `
-    SELECT ?relation ?person ?personLabel ?personDescription ?image ?birthDate ?deathDate ?gender 
-           ?otherParent ?otherParentLabel ?otherParentDescription ?otherParentImage ?otherParentBirthDate ?otherParentDeathDate ?otherParentGender
-           ?siblingFather ?siblingFatherLabel ?siblingFatherDescription ?siblingFatherImage ?siblingFatherBirthDate ?siblingFatherDeathDate ?siblingFatherGender
-           ?siblingMother ?siblingMotherLabel ?siblingMotherDescription ?siblingMotherImage ?siblingMotherBirthDate ?siblingMotherDeathDate ?siblingMotherGender
+  // First request: Get person IDs and their relationships
+  const relationsQuery = `
+    SELECT ?relation ?person ?otherParent ?siblingFather ?siblingMother
     WHERE {
       {
         wd:${personId} wdt:P22 ?person .
@@ -188,146 +304,121 @@ export const loadPersonFamily = async (personId: string): Promise<WikiDataFamily
           ?person wdt:P22 ?father .
           ?person wdt:P25 ?mother .
           BIND(IF(?father = wd:${personId}, ?mother, ?father) as ?otherParent)
-          OPTIONAL { ?otherParent wdt:P18 ?otherParentImage . }
-          OPTIONAL { ?otherParent wdt:P569 ?otherParentBirthDate . }
-          OPTIONAL { ?otherParent wdt:P570 ?otherParentDeathDate . }
-          OPTIONAL { ?otherParent wdt:P21 ?otherParentGender . }
         }
       } UNION {
         ?person wdt:P22 ?sharedFather .
         wd:${personId} wdt:P22 ?sharedFather .
         FILTER(?person != wd:${personId})
         BIND("sibling" as ?relation)
-        OPTIONAL { ?person wdt:P22 ?siblingFather .
-          OPTIONAL { ?siblingFather wdt:P18 ?siblingFatherImage . }
-          OPTIONAL { ?siblingFather wdt:P569 ?siblingFatherBirthDate . }
-          OPTIONAL { ?siblingFather wdt:P570 ?siblingFatherDeathDate . }
-          OPTIONAL { ?siblingFather wdt:P21 ?siblingFatherGender . }
-        }
-        OPTIONAL { ?person wdt:P25 ?siblingMother .
-          OPTIONAL { ?siblingMother wdt:P18 ?siblingMotherImage . }
-          OPTIONAL { ?siblingMother wdt:P569 ?siblingMotherBirthDate . }
-          OPTIONAL { ?siblingMother wdt:P570 ?siblingMotherDeathDate . }
-          OPTIONAL { ?siblingMother wdt:P21 ?siblingMotherGender . }
-        }
+        OPTIONAL { ?person wdt:P22 ?siblingFather . }
+        OPTIONAL { ?person wdt:P25 ?siblingMother . }
       } UNION {
         ?person wdt:P25 ?sharedMother .
         wd:${personId} wdt:P25 ?sharedMother .
         FILTER(?person != wd:${personId})
         BIND("sibling" as ?relation)
-        OPTIONAL { ?person wdt:P22 ?siblingFather .
-          OPTIONAL { ?siblingFather wdt:P18 ?siblingFatherImage . }
-          OPTIONAL { ?siblingFather wdt:P569 ?siblingFatherBirthDate . }
-          OPTIONAL { ?siblingFather wdt:P570 ?siblingFatherDeathDate . }
-          OPTIONAL { ?siblingFather wdt:P21 ?siblingFatherGender . }
-        }
-        OPTIONAL { ?person wdt:P25 ?siblingMother .
-          OPTIONAL { ?siblingMother wdt:P18 ?siblingMotherImage . }
-          OPTIONAL { ?siblingMother wdt:P569 ?siblingMotherBirthDate . }
-          OPTIONAL { ?siblingMother wdt:P570 ?siblingMotherDeathDate . }
-          OPTIONAL { ?siblingMother wdt:P21 ?siblingMotherGender . }
-        }
+        OPTIONAL { ?person wdt:P22 ?siblingFather . }
+        OPTIONAL { ?person wdt:P25 ?siblingMother . }
       }
-      OPTIONAL { ?person wdt:P18 ?image . }
-      OPTIONAL { ?person wdt:P569 ?birthDate . }
-      OPTIONAL { ?person wdt:P570 ?deathDate . }
-      OPTIONAL { ?person wdt:P21 ?gender . }
-      SERVICE wikibase:label { bd:serviceParam wikibase:language "en" . }
     }
   `
-  const sparqlUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(
-    sparqlQuery,
+
+  const relationsUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(
+    relationsQuery,
   )}&format=json`
-  const response = await fetch(sparqlUrl)
-  const data = await response.json()
+  const relationsResponse = await fetch(relationsUrl)
+  const relationsData = await relationsResponse.json()
+
+  // Process relationships and collect all person IDs
+  const { relations, allPersonIds } = processRelationBindings(relationsData)
+
+  // Second request: Get person data for all collected IDs
+  const personDataMap = new Map<string, WikiDataPerson>()
+
+  if (allPersonIds.size > 0) {
+    const personIds = Array.from(allPersonIds)
+    const dataQuery = `
+      SELECT ?item ?itemLabel ?itemDescription ?image ?birthDate ?deathDate ?gender WHERE {
+        VALUES ?item { ${personIds.map((id) => `wd:${id}`).join(' ')} }
+        OPTIONAL { ?item wdt:P18 ?image . }
+        OPTIONAL { ?item wdt:P569 ?birthDate . }
+        OPTIONAL { ?item wdt:P570 ?deathDate . }
+        OPTIONAL { ?item wdt:P21 ?gender . }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "en" . }
+      }
+    `
+
+    const dataUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(
+      dataQuery,
+    )}&format=json`
+    const dataResponse = await fetch(dataUrl)
+    const data = await dataResponse.json()
+
+    data.results?.bindings?.forEach((binding: PersonDataBinding) => {
+      const id = binding.item?.value.split('/').pop() ?? ''
+      const label = binding.itemLabel?.value ?? ''
+
+      if (!id || !label || label.startsWith('http')) return
+
+      personDataMap.set(id, {
+        id,
+        label,
+        description: binding.itemDescription?.value ?? '',
+        image: getWikiThumbnail(binding.image?.value),
+        birthDate: getValidDate(binding.birthDate?.value),
+        deathDate: getValidDate(binding.deathDate?.value),
+        gender: mapWikiGender(binding.gender?.value),
+      })
+    })
+  }
+
   const family: WikiDataFamily = {
     spouses: [],
     children: [],
     siblings: [],
   }
 
-  data.results?.bindings?.forEach((binding: SparqlBinding) => {
-    // Check all relevant labels for http
-    const checkLabel = (lbl?: string) => !!lbl && lbl.trim().startsWith('http')
+  if (relations.fathers.length > 0) {
+    family.father = personDataMap.get(relations.fathers[0])
+  }
+  if (relations.mothers.length > 0) {
+    family.mother = personDataMap.get(relations.mothers[0])
+  }
 
-    if (checkLabel(binding.personLabel?.value)) {
-      return
-    }
+  family.spouses = relations.spouses
+    .map((id: string) => personDataMap.get(id))
+    .filter(Boolean) as WikiDataPerson[]
 
-    const person: WikiDataPerson = {
-      id: binding.person?.value.split('/').pop() ?? '',
-      label: binding.personLabel?.value ?? '',
-      description: binding.personDescription?.value ?? '',
-      image: getWikiThumbnail(binding.image?.value),
-      birthDate: getValidDate(binding.birthDate?.value),
-      deathDate: getValidDate(binding.deathDate?.value),
-      gender: mapWikiGender(binding.gender?.value),
-    }
+  family.children = relations.children
+    .map(({ childId, otherParentId }: { childId: string; otherParentId?: string }) => {
+      const child = personDataMap.get(childId)
+      const otherParent = otherParentId ? personDataMap.get(otherParentId) : undefined
+      return child ? { child, otherParent } : null
+    })
+    .filter(Boolean) as Array<{ child: WikiDataPerson; otherParent?: WikiDataPerson }>
 
-    switch (binding.relation?.value) {
-      case 'father':
-        family.father ??= person
-        break
-      case 'mother':
-        family.mother ??= person
-        break
-      case 'spouse':
-        if (!family.spouses?.some((p) => p.id === person.id)) {
-          family.spouses?.push(person)
-        }
-        break
-      case 'child': {
-        let otherParent: WikiDataPerson | undefined
-        if (binding.otherParent?.value && !checkLabel(binding.otherParentLabel?.value)) {
-          const otherParentId = binding.otherParent.value.split('/').pop() ?? ''
-          otherParent = {
-            id: otherParentId,
-            label: binding.otherParentLabel?.value ?? 'Unknown Parent',
-            description: binding.otherParentDescription?.value ?? '',
-            image: getWikiThumbnail(binding.otherParentImage?.value),
-            birthDate: getValidDate(binding.otherParentBirthDate?.value),
-            deathDate: getValidDate(binding.otherParentDeathDate?.value),
-            gender: mapWikiGender(binding.otherParentGender?.value),
-          }
-        }
-        if (!family.children?.some((child) => child.child.id === person.id)) {
-          family.children?.push({ child: person, otherParent })
-        }
-        break
-      }
-      case 'sibling': {
-        // For siblings, get father/mother if available
-        let father: WikiDataPerson | undefined
-        let mother: WikiDataPerson | undefined
-        if (binding.siblingFatherLabel?.value && !checkLabel(binding.siblingFatherLabel?.value)) {
-          father = {
-            id: binding.siblingFather?.value?.split('/').pop() ?? '',
-            label: binding.siblingFatherLabel?.value,
-            description: binding.siblingFatherDescription?.value ?? '',
-            image: getWikiThumbnail(binding.siblingFatherImage?.value),
-            birthDate: getValidDate(binding.siblingFatherBirthDate?.value),
-            deathDate: getValidDate(binding.siblingFatherDeathDate?.value),
-            gender: mapWikiGender(binding.siblingFatherGender?.value),
-          }
-        }
-        if (binding.siblingMotherLabel?.value && !checkLabel(binding.siblingMotherLabel?.value)) {
-          mother = {
-            id: binding.siblingMother?.value?.split('/').pop() ?? '',
-            label: binding.siblingMotherLabel?.value,
-            description: binding.siblingMotherDescription?.value ?? '',
-            image: getWikiThumbnail(binding.siblingMotherImage?.value),
-            birthDate: getValidDate(binding.siblingMotherBirthDate?.value),
-            deathDate: getValidDate(binding.siblingMotherDeathDate?.value),
-            gender: mapWikiGender(binding.siblingMotherGender?.value),
-          }
-        }
-        if (!family.siblings?.some((s) => s.sibling.id === person.id)) {
-          family.siblings?.push({ sibling: person, father, mother })
-        }
-        break
-      }
-    }
-  })
+  family.siblings = relations.siblings
+    .map(
+      ({
+        siblingId,
+        fatherId,
+        motherId,
+      }: {
+        siblingId: string
+        fatherId?: string
+        motherId?: string
+      }) => {
+        const sibling = personDataMap.get(siblingId)
+        const father = fatherId ? personDataMap.get(fatherId) : undefined
+        const mother = motherId ? personDataMap.get(motherId) : undefined
+        return sibling ? { sibling, father, mother } : null
+      },
+    )
+    .filter(Boolean) as Array<{
+    sibling: WikiDataPerson
+    father?: WikiDataPerson
+    mother?: WikiDataPerson
+  }>
 
   return family
 }
